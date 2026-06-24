@@ -182,7 +182,7 @@ export function Setup() {
 
               {setupResult.value && (
                 <div class="bg-[rgba(255,255,255,0.03)] border border-border rounded-lg p-4 text-sm font-mono">
-                  <p class="text-text-secondary mb-2">Source passwords (save these):</p>
+                  <p class="text-text-secondary mb-2">Source passwords (save these — you can rotate them later in Settings and Streams):</p>
                   <p class="text-text-primary">Default: <span class="text-accent">{setupResult.value.default_source_pass}</span></p>
                   <p class="text-text-primary">Mount /live: <span class="text-accent">{setupResult.value.live_mount_pass}</span></p>
                 </div>

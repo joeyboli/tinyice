@@ -2,6 +2,9 @@ import { signal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 import { api } from '../../lib/api'
 import { Toggle } from '../../components/Toggle'
+import { showPasswordReveal } from '../../components/PasswordRevealModal'
+import { reportError } from '../../lib/toast'
+import type { AdminData } from '@/types'
 
 interface ServerSettings {
   bind_host: string
@@ -80,6 +83,23 @@ const branding = signal<BrandingSettings>({
 })
 
 const loading = signal(true)
+
+function isSuperAdmin(): boolean {
+  const data = window.__TINYICE__ as AdminData | undefined
+  return data?.user?.role === 'superadmin'
+}
+
+async function regenerateDefaultSourcePassword() {
+  if (!confirm('Regenerate the default source password? Sources using it will need to reconnect with the new password.')) {
+    return
+  }
+  try {
+    const res = await api.post<{ password: string }>('/api/credentials/regenerate', { target: 'default_source' })
+    showPasswordReveal('Default Source Password', 'Password', res.password)
+  } catch (e) {
+    reportError(e, 'Failed to regenerate default source password')
+  }
+}
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400)
@@ -349,6 +369,22 @@ export function Settings() {
                 </label>
               </div>
             </div>
+
+            {isSuperAdmin() && (
+              <div class="border-t border-border pt-4 mt-2">
+                <label class="font-mono text-[10px] tracking-[2px] text-text-tertiary mb-1 block">SOURCE CREDENTIALS</label>
+                <p class="text-[10px] text-text-tertiary mb-3">
+                  The default source password is used when a mount has no dedicated password. Rotate it here if needed.
+                </p>
+                <button
+                  type="button"
+                  onClick={regenerateDefaultSourcePassword}
+                  class="border border-border text-text-secondary font-mono text-xs px-4 py-2.5 rounded-lg hover:border-border-hover"
+                >
+                  REGENERATE DEFAULT SOURCE PASSWORD
+                </button>
+              </div>
+            )}
 
             {/* Read-only info */}
             <div class="border-t border-border pt-4 mt-2">

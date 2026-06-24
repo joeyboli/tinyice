@@ -682,6 +682,7 @@ func (s *Server) setupRoutes() *http.ServeMux {
 
 	mux.HandleFunc("/api/config/export", s.apiExportConfig)
 	mux.HandleFunc("/api/config/import", s.apiImportConfig)
+	mux.HandleFunc("/api/credentials/regenerate", s.apiRegenerateCredential)
 	mux.HandleFunc("/api/listeners", s.apiGetListeners)
 
 	mux.HandleFunc("/api/stats", s.apiGetStats)

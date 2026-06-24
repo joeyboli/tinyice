@@ -2,6 +2,7 @@ import { signal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 import { api } from '../../lib/api'
 import { reportError, showToast } from '../../lib/toast'
+import { showPasswordReveal } from '../../components/PasswordRevealModal'
 
 interface Stream {
   mount: string
@@ -81,17 +82,32 @@ async function saveMount() {
       }
       await api.put('/api/streams', body)
     } else {
-      await api.post('/api/streams', {
+      const res = await api.post<{ password?: string }>('/api/streams', {
         mount: formMount.value,
-        password: formPassword.value,
+        password: formPassword.value || undefined,
         burstSize: formBurst.value,
       })
+      if (res.password) {
+        showPasswordReveal('Source Password', formMount.value, res.password)
+      }
     }
     showModal.value = false
     resetForm()
     load()
   } catch (e) {
     saveError.value = (e as Error).message || 'Save failed'
+  }
+}
+
+async function regenerateMountPassword(mount: string) {
+  if (!confirm(`Regenerate source password for ${mount}? The connected source will need to reconnect.`)) {
+    return
+  }
+  try {
+    const res = await api.post<{ password: string }>('/api/credentials/regenerate', { target: 'mount', mount })
+    showPasswordReveal('Source Password', mount, res.password)
+  } catch (e) {
+    reportError(e, `Failed to regenerate password for ${mount}`)
   }
 }
 
@@ -180,6 +196,14 @@ export function Streams() {
                   <td class="px-4 py-3.5 text-right">
                     <div class="flex items-center justify-end gap-1">
                       <button
+                        onClick={() => regenerateMountPassword(s.mount)}
+                        title="Regenerate source password"
+                        aria-label="Regenerate source password"
+                        class="border border-border text-text-secondary font-mono text-xs px-2 py-1.5 rounded-lg hover:border-border-hover"
+                      >
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                      </button>
+                      <button
                         onClick={() => openEditModal(s)}
                         title="Edit mount"
                         aria-label="Edit mount"
@@ -239,7 +263,7 @@ export function Streams() {
               )}
               <div>
                 <label class="font-mono text-[10px] tracking-[2px] text-text-tertiary mb-1 block">
-                  {editingMount.value ? 'NEW SOURCE PASSWORD (LEAVE BLANK TO KEEP)' : 'SOURCE PASSWORD'}
+                  {editingMount.value ? 'NEW SOURCE PASSWORD (LEAVE BLANK TO KEEP)' : 'SOURCE PASSWORD (OPTIONAL — AUTO-GENERATED IF BLANK)'}
                 </label>
                 <input
                   type="password"

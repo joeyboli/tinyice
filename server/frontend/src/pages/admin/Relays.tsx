@@ -2,6 +2,7 @@ import { signal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 import { api } from '../../lib/api'
 import { reportError, showToast } from '../../lib/toast'
+import { showPasswordReveal } from '../../components/PasswordRevealModal'
 import { Toggle } from '../../components/Toggle'
 
 interface Relay {
@@ -66,17 +67,33 @@ async function load() {
 async function saveRelay() {
   formError.value = ''
   try {
-    await api.post('/api/relays', {
+    const res = await api.post<{ password?: string }>('/api/relays', {
       url: formUrl.value,
       mount: editingMount.value || formMount.value,
       password: formPassword.value || undefined,
       burst_size: formBurst.value,
     })
+    if (res.password) {
+      showPasswordReveal('Relay Password', editingMount.value || formMount.value, res.password)
+    }
     showForm.value = false
     resetForm()
     load()
   } catch (e) {
     formError.value = (e as Error).message || 'Save failed'
+  }
+}
+
+async function regenerateRelayPassword(mount: string) {
+  if (!confirm(`Regenerate relay password for ${mount}? The relay will restart with the new password.`)) {
+    return
+  }
+  try {
+    const res = await api.post<{ password: string }>('/api/credentials/regenerate', { target: 'relay', mount })
+    showPasswordReveal('Relay Password', mount, res.password)
+    load()
+  } catch (e) {
+    reportError(e, `Failed to regenerate relay password for ${mount}`)
   }
 }
 
@@ -143,6 +160,14 @@ export function Relays() {
                 <div class="flex items-center gap-3 ml-4">
                   <Toggle checked={r.enabled} onChange={() => toggleRelay(r.mount)} label="Enable relay" />
                   <button
+                    onClick={() => regenerateRelayPassword(r.mount)}
+                    title="Regenerate relay password"
+                    aria-label="Regenerate relay password"
+                    class="border border-border text-text-secondary font-mono text-xs px-2 py-1.5 rounded-lg hover:border-border-hover"
+                  >
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                  </button>
+                  <button
                     onClick={() => openEditForm(r)}
                     title="Edit relay"
                     aria-label="Edit relay"
@@ -196,7 +221,7 @@ export function Relays() {
               )}
               <div>
                 <label class="font-mono text-[10px] tracking-[2px] text-text-tertiary mb-1 block">
-                  {editingMount.value ? 'PASSWORD (LEAVE BLANK TO KEEP)' : 'PASSWORD (OPTIONAL)'}
+                  {editingMount.value ? 'PASSWORD (LEAVE BLANK TO KEEP)' : 'PASSWORD (OPTIONAL — AUTO-GENERATED IF BLANK)'}
                 </label>
                 <input
                   type="password"

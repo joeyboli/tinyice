@@ -226,12 +226,18 @@ func (s *Server) apiCreateStream(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if body.Mount == "" || body.Password == "" {
-		jsonError(w, "Mount and password are required", http.StatusBadRequest)
+	if body.Mount == "" {
+		jsonError(w, "Mount is required", http.StatusBadRequest)
 		return
 	}
 	if body.Mount[0] != '/' {
 		body.Mount = "/" + body.Mount
+	}
+
+	hashed, generated, err := generateMountPassword(body.Password)
+	if err != nil {
+		jsonError(w, "Failed to hash password: "+err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	// Check access or existence
@@ -254,18 +260,20 @@ func (s *Server) apiCreateStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	hashed, err := config.HashPassword(body.Password)
-	if err != nil {
-		jsonError(w, "Failed to hash password: "+err.Error(), http.StatusBadRequest)
-		return
-	}
 	if user.Role == config.RoleSuperAdmin {
 		s.Config.Mounts[body.Mount] = hashed
 	} else {
+		if user.Mounts == nil {
+			user.Mounts = make(map[string]string)
+		}
 		user.Mounts[body.Mount] = hashed
 	}
 	s.Config.SaveConfig()
-	jsonResponse(w, map[string]string{"status": "created", "mount": body.Mount})
+	resp := map[string]string{"status": "created", "mount": body.Mount}
+	if generated != "" {
+		resp["password"] = generated
+	}
+	jsonResponse(w, resp)
 	s.Audit(r, "mount_created", "stream", body.Mount, "")
 }
 
@@ -1452,6 +1460,7 @@ func (s *Server) apiCreateRelay(w http.ResponseWriter, r *http.Request) {
 	// the stored one so the Edit UI can omit the password field.
 	found := false
 	effectivePassword := body.Password
+	generated := ""
 	for _, rc := range s.Config.Relays {
 		if rc.Mount == body.Mount {
 			rc.URL = body.URL
@@ -1465,6 +1474,11 @@ func (s *Server) apiCreateRelay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
+		if body.Password == "" {
+			body.Password = generateRandomString(12)
+			generated = body.Password
+		}
+		effectivePassword = body.Password
 		s.Config.Relays = append(s.Config.Relays, &config.RelayConfig{
 			URL: body.URL, Mount: body.Mount, Password: body.Password, BurstSize: body.BurstSize, Enabled: true,
 		})
@@ -1477,7 +1491,11 @@ func (s *Server) apiCreateRelay(w http.ResponseWriter, r *http.Request) {
 	if found {
 		action = "relay_updated"
 	}
-	jsonResponse(w, map[string]string{"status": "ok"})
+	resp := map[string]string{"status": "ok"}
+	if generated != "" {
+		resp["password"] = generated
+	}
+	jsonResponse(w, resp)
 	s.Audit(r, action, "relay", body.Mount, body.URL)
 }
 

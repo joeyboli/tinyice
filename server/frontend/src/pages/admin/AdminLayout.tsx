@@ -2,6 +2,7 @@ import { Router, Route } from 'preact-router'
 import { useState } from 'preact/hooks'
 import { Sidebar } from '../../components/Sidebar'
 import { Toasts } from '../../components/Toasts'
+import { PasswordRevealModal } from '../../components/PasswordRevealModal'
 import { Dashboard } from './Dashboard'
 import { Streams } from './Streams'
 import { Relays } from './Relays'
@@ -40,6 +41,7 @@ export function AdminLayout() {
         </Router>
       </main>
       <Toasts />
+      <PasswordRevealModal />
     </div>
   )
 }
