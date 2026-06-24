@@ -6,22 +6,29 @@ import { VolumeKnob } from '@/components/VolumeKnob'
 import { createSSE } from '@/lib/sse'
 import { connectAudio, getFrequencyData, resumeAudio } from '@/lib/audio'
 import { useAlbumArt } from '@/hooks/useAlbumArt'
-import type { PlayerData } from '@/types'
+import type { PlayerData, PlayerOptions } from '@/types'
 
 const data = (window.__TINYICE__ ?? {}) as Partial<PlayerData>
+const playerOpts = (data.playerOptions ?? {}) as PlayerOptions
+const qs = new URLSearchParams(window.location.search)
+const accentColor = playerOpts.accent || qs.get('accent') || data.branding?.accentColor || '#ff6600'
+const hideStatsOpt = playerOpts.hideStats === true || qs.get('stats') === '0'
+const hideVisualizer = playerOpts.hideVisualizer === true || qs.get('visualizer') === '0'
+const wantsAutoplay = playerOpts.autoplay === true || qs.get('autoplay') === '1'
+const wantsWebRTC = playerOpts.webrtc === true || qs.get('webrtc') === '1' || qs.get('mode') === 'webrtc'
 
 const playing = signal(false)
 const playbackError = signal('')
 const title = signal(data.title || 'Untitled')
 const artist = signal(data.artist || 'Unknown Artist')
-const mode = signal<'http' | 'webrtc'>('http')
+const mode = signal<'http' | 'webrtc'>(wantsWebRTC ? 'webrtc' : 'http')
 const volume = signal(80)
 const listeners = signal(data.listeners || 0)
 // Seconds of continuous playback since the user most recently pressed play.
 // Resets to 0 on pause so the number always reflects "how long the current
 // listening session has been running" rather than page-open time.
 const elapsed = signal(0)
-const showStats = signal(false)
+const showStats = signal(!hideStatsOpt)
 
 // Live stream info (refreshed from SSE) — these reflect what the source is
 // currently producing, independent of how well our player is keeping up.
@@ -262,6 +269,9 @@ async function attachHLS(url: string, el: HTMLMediaElement): Promise<HlsLike | n
 }
 
 export function Player() {
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent-override', accentColor)
+  }, [])
   const audioRef = useRef<HTMLAudioElement>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const hlsRef = useRef<HlsLike | null>(null)
@@ -362,8 +372,8 @@ async function pickAudioSource(mountPath: string): Promise<string> {
     if (!el || srcAttachedRef.current) return
     srcAttachedRef.current = true
     const mountPath = data.mount!.startsWith('/') ? data.mount! : `/${data.mount}`
-    const wantsWebRTC = new URLSearchParams(window.location.search).get('webrtc') === '1'
-    if (wantsWebRTC) {
+    const wantsWebRTCLocal = wantsWebRTC || mode.value === 'webrtc'
+    if (wantsWebRTCLocal) {
       const whep = await attachWHEP(mountPath, el)
       if (whep) {
         whepCleanup.current = whep
@@ -567,6 +577,12 @@ async function pickAudioSource(mountPath: string): Promise<string> {
     volume.value = v
   }, [])
 
+  useEffect(() => {
+    if (!wantsAutoplay) return
+    const t = setTimeout(() => { void handlePlay() }, 300)
+    return () => clearTimeout(t)
+  }, [handlePlay])
+
   // Video-first layout: the stream's video element is the hero. The audio
   // vinyl visualizer + mode toggle are hidden because the video already
   // carries the audio track. Keeps just the essentials: title / artist,
@@ -673,17 +689,19 @@ async function pickAudioSource(mountPath: string): Promise<string> {
                   ● {formatElapsed(elapsed.value)}
                 </span>
               )}
-              <button
-                onClick={() => (showStats.value = !showStats.value)}
-                class={`font-mono text-[9px] tracking-widest uppercase px-2 py-1 rounded border ${showStats.value ? 'border-accent text-accent' : 'border-border text-text-tertiary hover:border-border-hover'}`}
-                title="Toggle stream stats"
-              >
-                STATS
-              </button>
+              {!hideStatsOpt && (
+                <button
+                  onClick={() => (showStats.value = !showStats.value)}
+                  class={`font-mono text-[9px] tracking-widest uppercase px-2 py-1 rounded border ${showStats.value ? 'border-accent text-accent' : 'border-border text-text-tertiary hover:border-border-hover'}`}
+                  title="Toggle stream stats"
+                >
+                  STATS
+                </button>
+              )}
               <VolumeKnob value={volume.value} onChange={handleVolumeChange} />
             </div>
           </div>
-          {showStats.value && <StatsPanel isVideo={true} />}
+          {!hideStatsOpt && showStats.value && <StatsPanel isVideo={true} />}
         </div>
       </div>
     )
@@ -733,7 +751,9 @@ async function pickAudioSource(mountPath: string): Promise<string> {
       {/* Main content */}
       <main class="relative z-10 flex flex-col items-center gap-8">
         {/* Visualizer */}
-        <Visualizer size={260} getFreqData={getFreqData} albumArt={albumArt} />
+        {!hideVisualizer && (
+          <Visualizer size={260} getFreqData={getFreqData} albumArt={albumArt} />
+        )}
 
         {/* Track info */}
         <div class="flex flex-col items-center gap-1.5 max-w-xs text-center">
@@ -791,16 +811,18 @@ async function pickAudioSource(mountPath: string): Promise<string> {
               ● {formatElapsed(elapsed.value)}
             </span>
           )}
-          <button
-            onClick={() => (showStats.value = !showStats.value)}
-            class={`font-mono text-[9px] tracking-widest uppercase px-2 py-0.5 rounded border ${showStats.value ? 'border-accent text-accent' : 'border-border text-text-tertiary hover:border-border-hover'}`}
-            title="Toggle stream stats"
-          >
-            STATS
-          </button>
+          {!hideStatsOpt && (
+            <button
+              onClick={() => (showStats.value = !showStats.value)}
+              class={`font-mono text-[9px] tracking-widest uppercase px-2 py-0.5 rounded border ${showStats.value ? 'border-accent text-accent' : 'border-border text-text-tertiary hover:border-border-hover'}`}
+              title="Toggle stream stats"
+            >
+              STATS
+            </button>
+          )}
         </div>
       </div>
-      {showStats.value && <StatsPanel isVideo={false} />}
+      {!hideStatsOpt && showStats.value && <StatsPanel isVideo={false} />}
     </div>
   )
 }

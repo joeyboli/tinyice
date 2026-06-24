@@ -338,6 +338,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "event: geo\ndata: %s\n\n", geoJSON)
 		}
 
+		if s.ListenerRegistry != nil {
+			listeners := s.ListenerRegistry.Snapshot("", "", false)
+			listenersJSON, _ := json.Marshal(map[string]interface{}{
+				"listeners": listeners,
+				"total":     len(listeners),
+			})
+			fmt.Fprintf(w, "event: listeners\ndata: %s\n\n", listenersJSON)
+		}
+
 		flusher.Flush()
 		return nil
 	}
@@ -703,7 +712,8 @@ func (s *Server) handleWebRTCOffer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answer, err := s.WebRTCM.HandleOffer(mount, offer)
+	unreg := s.registerWebRTCListener(mount, "webrtc", r)
+	answer, err := s.WebRTCM.HandleOffer(mount, offer, unreg)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)

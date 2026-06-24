@@ -121,6 +121,7 @@ func (s *Server) recordAuthFailure(ip string) {
 			"until":   attempt.LockoutBy.Format(time.RFC3339),
 			"details": "5 failed authentication attempts",
 		})
+		go s.notifyAdminsSecurityLockout(ip, "brute_force_auth", attempt.LockoutBy.Format(time.RFC3339), "5 failed authentication attempts")
 	}
 }
 
@@ -160,6 +161,7 @@ func (s *Server) recordScanAttempt(ip, path string) {
 			"until":   attempt.LockoutBy.Format(time.RFC3339),
 			"details": fmt.Sprintf("%d distinct 404 paths", len(attempt.Paths)),
 		})
+		go s.notifyAdminsSecurityLockout(ip, "connection_scanning", attempt.LockoutBy.Format(time.RFC3339), fmt.Sprintf("%d distinct 404 paths", len(attempt.Paths)))
 	}
 }
 

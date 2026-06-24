@@ -115,6 +115,9 @@ type Server struct {
 	// updated by handleListener for the dashboard map.
 	GeoTracker *GeoTracker
 
+	// ListenerRegistry — per-session listener details for admin/API.
+	ListenerRegistry *LiveListenerRegistry
+
 }
 
 func NewServer(cfg *config.Config, authLog *zap.SugaredLogger, version, commit, setupToken string) *Server {
@@ -206,6 +209,7 @@ func NewServer(cfg *config.Config, authLog *zap.SugaredLogger, version, commit, 
 	// download lands) so handleListener never blocks on it.
 	srv.GeoIP = relay.NewGeoLookup("/var/lib/tinyice/geoip")
 	srv.GeoTracker = NewGeoTracker(srv.GeoIP)
+	srv.ListenerRegistry = NewLiveListenerRegistry(srv.GeoIP)
 
 	// Ensure default tenant exists for backward compatibility
 	srv.TenantM.GetOrCreateDefaultTenant()
@@ -292,8 +296,10 @@ func (s *Server) setupRoutes() *http.ServeMux {
 	mux.HandleFunc("/admin/history", s.handleHistory)
 	mux.HandleFunc("/admin/statistics", s.handleGetStats)
 	mux.HandleFunc("/admin/insights", s.handleInsights)
+	mux.HandleFunc("/admin/insights/export", s.handleInsightsExport)
 	mux.HandleFunc("/admin/traffic", s.handleTraffic)
 	mux.HandleFunc("/admin/geo", s.handleGeo)
+	mux.HandleFunc("/admin/listeners", s.handleAdminListeners)
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/logout", s.handleLogout)
 
@@ -374,6 +380,10 @@ func (s *Server) setupRoutes() *http.ServeMux {
 		}
 		if strings.HasSuffix(path, "/poster.jpg") {
 			s.handlePoster(w, r)
+			return
+		}
+		if strings.HasSuffix(path, "/feed.xml") {
+			s.handlePodcastFeed(w, r)
 			return
 		}
 		if strings.HasSuffix(path, "/whep") {
@@ -669,6 +679,10 @@ func (s *Server) setupRoutes() *http.ServeMux {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	mux.HandleFunc("/api/config/export", s.apiExportConfig)
+	mux.HandleFunc("/api/config/import", s.apiImportConfig)
+	mux.HandleFunc("/api/listeners", s.apiGetListeners)
 
 	mux.HandleFunc("/api/stats", s.apiGetStats)
 

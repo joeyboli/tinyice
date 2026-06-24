@@ -2,15 +2,23 @@ import { useEffect, useRef } from 'preact/hooks'
 import { signal } from '@preact/signals'
 import { EqBars } from '@/components/EqBars'
 import { createSSE } from '@/lib/sse'
-import type { PlayerData } from '@/types'
+import type { PlayerData, PlayerOptions } from '@/types'
 
 const data = (window.__TINYICE__ ?? {}) as Partial<PlayerData>
+const playerOpts = (data.playerOptions ?? {}) as PlayerOptions
+const qs = new URLSearchParams(window.location.search)
+const accentColor = playerOpts.accent || qs.get('accent') || data.branding?.accentColor || '#ff6600'
+const wantsAutoplay = playerOpts.autoplay === true || qs.get('autoplay') === '1'
 const title = signal(data.title || '')
 const artist = signal(data.artist || '')
 const playing = signal(false)
 
 export function Embed() {
   const audioRef = useRef<HTMLAudioElement>(null)
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent-override', accentColor)
+  }, [])
 
   useEffect(() => {
     const sse = createSSE('/events')
@@ -32,6 +40,14 @@ export function Embed() {
     return () => sse.close()
   }, [])
 
+  useEffect(() => {
+    if (!wantsAutoplay) return
+    const audio = audioRef.current
+    if (!audio || !data.mount) return
+    audio.src = data.mount.startsWith('/') ? data.mount : `/${data.mount}`
+    audio.play().then(() => { playing.value = true }).catch(() => {})
+  }, [])
+
   function togglePlay() {
     const audio = audioRef.current
     if (!audio) return
@@ -40,7 +56,7 @@ export function Embed() {
       audio.src = ''
       playing.value = false
     } else {
-      audio.src = data.mount.startsWith('/') ? data.mount : `/${data.mount}`
+      audio.src = data.mount!.startsWith('/') ? data.mount! : `/${data.mount}`
       audio.play()
       playing.value = true
     }
@@ -51,7 +67,6 @@ export function Embed() {
       <audio ref={audioRef} preload="none" />
 
       <div class="flex-1 flex items-center gap-3 px-3">
-        {/* Play button */}
         <button
           onClick={togglePlay}
           class="h-8 w-8 flex-shrink-0 rounded-full bg-accent flex items-center justify-center hover:bg-accent/90 transition-colors"
@@ -69,7 +84,6 @@ export function Embed() {
           )}
         </button>
 
-        {/* Track info */}
         <div class="flex-1 min-w-0">
           <p class="text-sm text-text-primary truncate">
             {title.value || 'No track info'}
@@ -79,11 +93,9 @@ export function Embed() {
           </p>
         </div>
 
-        {/* EQ visualizer */}
         {playing.value && <EqBars bars={4} />}
       </div>
 
-      {/* Bottom visualizer bar */}
       {playing.value && (
         <div class="h-[2px] bg-gradient-to-r from-accent via-accent/60 to-transparent" />
       )}

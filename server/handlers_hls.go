@@ -41,6 +41,7 @@ func (s *Server) handleHLSPlaylist(w http.ResponseWriter, r *http.Request) {
 	// mounts. hls.js polls the playlist every TARGETDURATION/2, so
 	// each viewer keeps refreshing the same IP entry inside the
 	// 30 s viewer-TTL window.
+	s.touchHLSListener(mount, r)
 	if stream, ok := s.Relay.GetStream(mount); ok {
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
 		if host == "" {
@@ -92,6 +93,8 @@ func (s *Server) handleHLSSegment(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+
+	s.touchHLSListener(mount, r)
 
 	segment := hls.Ring().Get(seq)
 	if segment == nil {
@@ -146,7 +149,8 @@ func (s *Server) handleWHEP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	answer, err := s.WebRTCM.HandleWHEPOffer(mount, string(body))
+	unreg := s.registerWebRTCListener(mount, "whep", r)
+	answer, err := s.WebRTCM.HandleWHEPOffer(mount, string(body), unreg)
 	if err != nil {
 		logger.L.Warnw("WHEP: offer rejected", "mount", mount, "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)

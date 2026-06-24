@@ -15,7 +15,24 @@ interface ServerSettings {
   low_latency_mode: boolean
   directory_listing: boolean
   audit_enabled: boolean
+  smtp?: SMTPSettings
 }
+
+interface SMTPSettings {
+  enabled: boolean
+  host: string
+  port: number
+  from: string
+  username: string
+  notify_events: string[]
+}
+
+const NOTIFY_EVENT_OPTIONS = [
+  { id: 'pending_user', label: 'Pending user requests' },
+  { id: 'source_connect', label: 'Source connected' },
+  { id: 'source_disconnect', label: 'Source disconnected' },
+  { id: 'security_lockout', label: 'Security lockouts' },
+] as const
 
 interface BrandingSettings {
   page_title: string
@@ -41,7 +58,17 @@ const server = signal<ServerSettings>({
   low_latency_mode: false,
   directory_listing: false,
   audit_enabled: false,
+  smtp: {
+    enabled: false,
+    host: '',
+    port: 587,
+    from: '',
+    username: '',
+    notify_events: ['pending_user', 'source_connect', 'source_disconnect', 'security_lockout'],
+  },
 })
+
+const smtpPassword = signal('')
 
 // Branding state
 const branding = signal<BrandingSettings>({
@@ -70,7 +97,10 @@ async function load() {
       api.get<ServerSettings>('/api/settings'),
       api.get<BrandingSettings>('/api/branding'),
     ])
-    server.value = s
+    server.value = {
+      ...s,
+      smtp: s.smtp ?? server.value.smtp,
+    }
     branding.value = b
   } catch { /* empty */ }
   loading.value = false
@@ -79,7 +109,7 @@ async function load() {
 async function saveServer() {
   saving.value = true
   try {
-    await api.put('/api/settings', {
+    const body: Record<string, unknown> = {
       hostname: server.value.hostname,
       base_url: server.value.base_url,
       location: server.value.location,
@@ -88,9 +118,42 @@ async function saveServer() {
       low_latency_mode: server.value.low_latency_mode,
       directory_listing: server.value.directory_listing,
       audit_enabled: server.value.audit_enabled,
-    })
+      smtp: {
+        ...server.value.smtp,
+        ...(smtpPassword.value ? { password: smtpPassword.value } : {}),
+      },
+    }
+    await api.put('/api/settings', body)
+    smtpPassword.value = ''
   } catch { /* empty */ }
   saving.value = false
+}
+
+async function exportConfig() {
+  const res = await fetch('/api/config/export', { credentials: 'same-origin' })
+  if (!res.ok) return
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'tinyice-config.json'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function importConfig(file: File) {
+  const text = await file.text()
+  const json = JSON.parse(text)
+  await api.post('/api/config/import', json)
+  await load()
+}
+
+function toggleNotifyEvent(id: string) {
+  const smtp = server.value.smtp!
+  const events = smtp.notify_events.includes(id)
+    ? smtp.notify_events.filter((e) => e !== id)
+    : [...smtp.notify_events, id]
+  server.value = { ...server.value, smtp: { ...smtp, notify_events: events } }
 }
 
 async function saveBranding() {
@@ -189,6 +252,102 @@ export function Settings() {
                 <p class="text-[10px] text-text-tertiary mt-0.5">Record admin actions for security review</p>
               </div>
               <Toggle checked={server.value.audit_enabled} onChange={(v) => updateServer('audit_enabled', v)} label="Audit logging" />
+            </div>
+
+            {/* Email notifications */}
+            <div class="border-t border-border pt-4 mt-2">
+              <label class="font-mono text-[10px] tracking-[2px] text-text-tertiary mb-1 block">EMAIL NOTIFICATIONS</label>
+              <p class="text-[10px] text-text-tertiary mb-3">Send admin alerts via SMTP when server events occur.</p>
+              <div class="flex items-center justify-between mb-4">
+                <span class="font-mono text-[10px] tracking-[2px] text-text-tertiary">ENABLE SMTP</span>
+                <Toggle
+                  checked={server.value.smtp?.enabled ?? false}
+                  onChange={(v) => updateServer('smtp', { ...server.value.smtp!, enabled: v })}
+                  label="SMTP enabled"
+                />
+              </div>
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <input
+                  type="text"
+                  placeholder="smtp.example.com"
+                  value={server.value.smtp?.host ?? ''}
+                  onInput={(e) => updateServer('smtp', { ...server.value.smtp!, host: (e.target as HTMLInputElement).value })}
+                  class="bg-[rgba(255,255,255,0.03)] border border-border rounded-lg px-3 py-2 text-text-primary font-mono text-sm focus:border-accent outline-none"
+                />
+                <input
+                  type="number"
+                  placeholder="587"
+                  value={server.value.smtp?.port ?? 587}
+                  onInput={(e) => updateServer('smtp', { ...server.value.smtp!, port: parseInt((e.target as HTMLInputElement).value) || 587 })}
+                  class="bg-[rgba(255,255,255,0.03)] border border-border rounded-lg px-3 py-2 text-text-primary font-mono text-sm focus:border-accent outline-none"
+                />
+              </div>
+              <div class="flex flex-col gap-3 mb-3">
+                <input
+                  type="email"
+                  placeholder="from@example.com"
+                  value={server.value.smtp?.from ?? ''}
+                  onInput={(e) => updateServer('smtp', { ...server.value.smtp!, from: (e.target as HTMLInputElement).value })}
+                  class="w-full bg-[rgba(255,255,255,0.03)] border border-border rounded-lg px-3 py-2 text-text-primary font-mono text-sm focus:border-accent outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="SMTP username"
+                  value={server.value.smtp?.username ?? ''}
+                  onInput={(e) => updateServer('smtp', { ...server.value.smtp!, username: (e.target as HTMLInputElement).value })}
+                  class="w-full bg-[rgba(255,255,255,0.03)] border border-border rounded-lg px-3 py-2 text-text-primary font-mono text-sm focus:border-accent outline-none"
+                />
+                <input
+                  type="password"
+                  placeholder="SMTP password (leave blank to keep)"
+                  value={smtpPassword.value}
+                  onInput={(e) => { smtpPassword.value = (e.target as HTMLInputElement).value }}
+                  class="w-full bg-[rgba(255,255,255,0.03)] border border-border rounded-lg px-3 py-2 text-text-primary font-mono text-sm focus:border-accent outline-none"
+                />
+              </div>
+              <div class="flex flex-wrap gap-2">
+                {NOTIFY_EVENT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => toggleNotifyEvent(opt.id)}
+                    class={`px-2.5 py-1 rounded font-mono text-[10px] tracking-wider border transition-colors ${
+                      server.value.smtp?.notify_events.includes(opt.id)
+                        ? 'border-accent text-accent bg-accent/10'
+                        : 'border-border text-text-tertiary hover:border-border-hover'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Config backup */}
+            <div class="border-t border-border pt-4 mt-2">
+              <label class="font-mono text-[10px] tracking-[2px] text-text-tertiary mb-1 block">CONFIG BACKUP</label>
+              <p class="text-[10px] text-text-tertiary mb-3">Export or import server configuration. Secrets are redacted on export.</p>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void exportConfig()}
+                  class="px-3 py-2 rounded-lg border border-border text-text-secondary font-mono text-xs tracking-wider hover:border-border-hover"
+                >
+                  EXPORT JSON
+                </button>
+                <label class="cursor-pointer px-3 py-2 rounded-lg border border-border text-text-secondary font-mono text-xs tracking-wider hover:border-border-hover">
+                  IMPORT JSON
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    class="hidden"
+                    onChange={(e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0]
+                      if (file) void importConfig(file)
+                    }}
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Read-only info */}
@@ -303,7 +462,7 @@ export function Settings() {
             {/* Accent Color */}
             <div>
               <label class="font-mono text-[10px] tracking-[2px] text-text-tertiary mb-1 block">ACCENT COLOR</label>
-              <p class="text-[10px] text-text-tertiary mb-2">Primary color for buttons, links, and highlights.</p>
+              <p class="text-[10px] text-text-tertiary mb-2">Primary color for buttons, links, and highlights. Also used as the player accent unless overridden with <code class="font-code">?accent=</code>.</p>
               {/* Preset swatches */}
               <div class="flex items-center gap-1.5 mb-3">
                 {['#ff6600', '#e74c3c', '#e91e63', '#9b59b6', '#3498db', '#00bcd4', '#2ecc71', '#f39c12', '#1abc9c', '#6c5ce7'].map((color) => (

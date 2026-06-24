@@ -13,11 +13,16 @@ const sections = [
   { id: 'streaming', label: 'Streaming', children: [
     { id: 'webrtc-source', label: 'WebRTC Source' },
     { id: 'http-listening', label: 'HTTP Listening' },
+    { id: 'hls-playback', label: 'HLS Playback' },
     { id: 'webrtc-playback', label: 'WebRTC Playback' },
     { id: 'metadata-sse', label: 'Metadata SSE' },
+    { id: 'podcast-feed', label: 'Podcast Feed' },
   ]},
   { id: 'reference', label: 'Reference', children: [
     { id: 'rest-api', label: 'REST API' },
+    { id: 'api-tokens', label: 'API Tokens' },
+    { id: 'live-listeners', label: 'Live Listeners' },
+    { id: 'player-options', label: 'Player Options' },
     { id: 'api-docs', label: 'API Docs (Swagger)' },
     { id: 'embed-widget', label: 'Embed Widget' },
     { id: 'icecast-compat', label: 'Icecast Compat' },
@@ -26,6 +31,8 @@ const sections = [
 
 const endpoints = [
   { method: 'GET', path: '/{mount}', desc: 'Listen to audio stream (HTTP)' },
+  { method: 'GET', path: '/{mount}/playlist.m3u8', desc: 'HLS playlist (audio + video)' },
+  { method: 'GET', path: '/{mount}/feed.xml', desc: 'RSS podcast feed (recent tracks)' },
   { method: 'POST', path: '/webrtc/source-offer', desc: 'Start WebRTC source stream' },
   { method: 'POST', path: '/webrtc/offer', desc: 'WebRTC listener connection' },
   { method: 'GET', path: '/events', desc: 'Real-time metadata (SSE)' },
@@ -33,6 +40,9 @@ const endpoints = [
   { method: 'POST', path: '/api/streams', desc: 'Create a stream mount' },
   { method: 'GET', path: '/api/autodj', desc: 'List AutoDJ instances' },
   { method: 'GET', path: '/api/stats', desc: 'Server statistics' },
+  { method: 'GET', path: '/api/listeners', desc: 'Live listeners (IP, UA, transport)' },
+  { method: 'GET', path: '/admin/listeners', desc: 'Live listeners (session auth)' },
+  { method: 'GET', path: '/admin/insights/export', desc: 'Export listener history (CSV)' },
   { method: 'GET', path: '/api/relays', desc: 'List relay connections' },
   { method: 'GET', path: '/api/users', desc: 'List users' },
   { method: 'GET', path: '/api/settings', desc: 'Server configuration' },
@@ -187,22 +197,22 @@ await pc.setRemoteDescription(answer)
                   label: 'Binary',
                   language: 'bash',
                   code: `# Download latest release
-curl -L https://github.com/your-org/tinyice/releases/latest/download/tinyice-$(uname -s)-$(uname -m) -o tinyice
+curl -L "https://github.com/DatanoiseTV/tinyice/releases/latest/download/tinyice-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)" -o tinyice
 chmod +x tinyice
 
 # Run the server
-./tinyice --port 8080`,
+./tinyice --port 8000`,
                 },
                 {
                   label: 'From Source',
                   language: 'bash',
                   code: `# Clone and build
-git clone https://github.com/your-org/tinyice.git
+git clone https://github.com/DatanoiseTV/tinyice.git
 cd tinyice
-go build -o tinyice .
+make build
 
 # Run the server
-./tinyice --port 8080`,
+./tinyice --port 8000`,
                 },
               ]} />
             </section>
@@ -260,6 +270,44 @@ audio.play()
               ]} />
             </section>
 
+            {/* HLS Playback */}
+            <section id="hls-playback">
+              <h2 class="font-heading text-xl font-bold text-text-primary mb-2">HLS Playback</h2>
+              <p class="text-text-secondary text-sm leading-relaxed mb-6">
+                Video streams (RTMP/SRT ingest) are available as HLS at <code class="font-code text-accent">/{'{mount}'}/playlist.m3u8</code>.
+                Use hls.js in browsers that lack native HLS support.
+              </p>
+
+              <CodeBlock tabs={[
+                {
+                  label: 'curl',
+                  language: 'bash',
+                  code: `# Fetch the live HLS playlist
+curl -s https://your-server.com/live/playlist.m3u8
+
+# Play with ffplay
+ffplay https://your-server.com/live/playlist.m3u8`,
+                },
+                {
+                  label: 'TypeScript',
+                  language: 'typescript',
+                  code: `import Hls from 'hls.js'
+
+const video = document.querySelector('video')!
+const src = 'https://your-server.com/live/playlist.m3u8'
+
+if (Hls.isSupported()) {
+  const hls = new Hls()
+  hls.loadSource(src)
+  hls.attachMedia(video)
+} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+  video.src = src
+}
+video.play()`,
+                },
+              ]} />
+            </section>
+
             {/* WebRTC Playback */}
             <section id="webrtc-playback">
               <h2 class="font-heading text-xl font-bold text-text-primary mb-2">WebRTC Playback</h2>
@@ -309,6 +357,21 @@ source.addEventListener('metadata', (e) => {
               }]} />
             </section>
 
+            {/* Podcast Feed */}
+            <section id="podcast-feed">
+              <h2 class="font-heading text-xl font-bold text-text-primary mb-2">Podcast Feed (RSS)</h2>
+              <p class="text-text-secondary text-sm leading-relaxed mb-6">
+                Each mount exposes a public RSS feed of recently played tracks at <code class="font-code text-accent">/{'{mount}'}/feed.xml</code>.
+                Useful for podcast apps, station websites, and syndication.
+              </p>
+
+              <CodeBlock tabs={[{
+                label: 'curl',
+                language: 'bash',
+                code: `curl -s https://your-server.com/live/feed.xml`,
+              }]} />
+            </section>
+
             {/* REST API */}
             <section id="rest-api">
               <h2 class="font-heading text-xl font-bold text-text-primary mb-2">REST API</h2>
@@ -333,6 +396,101 @@ source.addEventListener('metadata', (e) => {
                   </div>
                 ))}
               </div>
+            </section>
+
+            {/* Live Listeners API */}
+            <section id="live-listeners">
+              <h2 class="font-heading text-xl font-bold text-text-primary mb-2">Live Listeners</h2>
+              <p class="text-text-secondary text-sm leading-relaxed mb-6">
+                Query connected listeners with IP, user agent, transport, geo location, and bytes sent.
+                The admin dashboard also receives live updates via the <code class="font-code">listeners</code> SSE event.
+              </p>
+
+              <CodeBlock tabs={[
+                {
+                  label: 'curl',
+                  language: 'bash',
+                  code: `# All live listeners
+curl -b cookies.txt https://your-server.com/api/listeners
+
+# Filter by mount and transport
+curl -b cookies.txt "https://your-server.com/api/listeners?mount=/live&transport=http"`,
+                },
+                {
+                  label: 'Response',
+                  language: 'json',
+                  code: `{
+  "total": 1,
+  "listeners": [{
+    "id": "203.0.113.10:51234-1719240000000000",
+    "mount": "/live",
+    "ip": "203.0.113.10",
+    "user_agent": "VLC/3.0.20",
+    "transport": "http",
+    "connected_at": "2026-06-24T12:00:00Z",
+    "connected_seconds": 183,
+    "bytes_sent": 2457600,
+    "country_iso": "US",
+    "country": "United States",
+    "city": "Chicago"
+  }]
+}`,
+                },
+              ]} />
+            </section>
+
+            {/* API Tokens */}
+            <section id="api-tokens">
+              <h2 class="font-heading text-xl font-bold text-text-primary mb-2">API Tokens</h2>
+              <p class="text-text-secondary text-sm leading-relaxed mb-6">
+                Create bearer tokens in Admin → API Tokens. Pass the token in the <code class="font-code">Authorization</code> header
+                for programmatic access to the REST API.
+              </p>
+
+              <CodeBlock tabs={[
+                {
+                  label: 'curl',
+                  language: 'bash',
+                  code: `curl -H "Authorization: Bearer ti_YOUR_TOKEN" \\
+  https://your-server.com/api/streams`,
+                },
+                {
+                  label: 'Python',
+                  language: 'python',
+                  code: `import requests
+
+headers = {"Authorization": "Bearer ti_YOUR_TOKEN"}
+r = requests.get("https://your-server.com/api/streams", headers=headers)
+print(r.json())`,
+                },
+              ]} />
+            </section>
+
+            {/* Player Options */}
+            <section id="player-options">
+              <h2 class="font-heading text-xl font-bold text-text-primary mb-2">Player Customization</h2>
+              <p class="text-text-secondary text-sm leading-relaxed mb-6">
+                Customize the built-in player and embed widget with query parameters.
+              </p>
+
+              <CodeBlock tabs={[{
+                label: 'URL params',
+                language: 'bash',
+                code: `# Hide stats overlay
+/player/live?stats=0
+
+# Autoplay on load
+/player/live?autoplay=1
+
+# Custom accent color
+/player/live?accent=%23e91e63
+
+# WebRTC mode (sub-second latency)
+/player/live?mode=webrtc
+
+# Combine options
+/embed/live?autoplay=1&stats=0&accent=%233498db`,
+              }]} />
             </section>
 
             {/* API Docs */}

@@ -11,6 +11,29 @@ export interface TinyIceBase {
   }
 }
 
+export interface LiveListener {
+  id: string
+  mount: string
+  ip: string
+  user_agent: string
+  transport: string
+  connected_at: string
+  last_seen: string
+  connected_seconds: number
+  bytes_sent: number
+  country_iso?: string
+  country?: string
+  city?: string
+}
+
+export interface PlayerOptions {
+  hideStats?: boolean
+  autoplay?: boolean
+  hideVisualizer?: boolean
+  accent?: string
+  webrtc?: boolean
+}
+
 export interface PlayerData extends TinyIceBase {
   mount: string
   title: string
@@ -19,6 +42,7 @@ export interface PlayerData extends TinyIceBase {
   bitrate: number
   listeners: number
   hasWebRTC: boolean
+  playerOptions?: PlayerOptions
   // hasVideo is true when the mount has a companion /video sub-mount —
   // the player then swaps its <audio> for a <video> bound to the HLS
   // playlist so the user sees picture + audio together.

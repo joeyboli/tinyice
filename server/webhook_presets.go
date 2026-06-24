@@ -142,6 +142,79 @@ var builtinPresets = []WebhookPreset{
 		Body: `partnerId=<PARTNER_ID>&partnerKey=<PARTNER_KEY>&id=<STATION_ID>&title={{urlencode .Title}}&artist={{urlencode .Artist}}`,
 	},
 	{
+		ID:          "gotify",
+		Name:        "Gotify push notification",
+		Description: "Sends a message to a self-hosted Gotify server. Replace <TOKEN> with your application token.",
+		URLHint:     "https://gotify.example.com/message?token=<TOKEN>",
+		Events:      []string{"now_playing", "source_connect", "source_disconnect"},
+		Method:      "POST",
+		ContentType: "application/json",
+		Body: `{
+  "title": "TinyIce — {{.Mount}}",
+  "message": "{{.Artist}} – {{.Title}}",
+  "priority": 5
+}`,
+	},
+	{
+		ID:          "matrix",
+		Name:        "Matrix room webhook",
+		Description: "Posts to a Matrix room via a generic webhook bridge (e.g. matrix-webhook). Replace <WEBHOOK_URL> with your bridge endpoint.",
+		URLHint:     "https://matrix.example.com/_matrix/client/r0/rooms/<room>/send/m.room.message",
+		Events:      []string{"now_playing"},
+		Method:      "POST",
+		ContentType: "application/json",
+		Body: `{
+  "msgtype": "m.text",
+  "body": "🎵 {{.Mount}} — {{.Artist}} – {{.Title}}"
+}`,
+	},
+	{
+		ID:          "ifttt",
+		Name:        "IFTTT Webhooks",
+		Description: "Triggers an IFTTT applet via the Maker Webhooks service. Replace <EVENT> with your event name.",
+		URLHint:     "https://maker.ifttt.com/trigger/<EVENT>/with/key/<KEY>",
+		Events:      []string{"now_playing", "source_connect", "source_disconnect"},
+		Method:      "POST",
+		ContentType: "application/json",
+		Body: `{
+  "value1": "{{.Mount}}",
+  "value2": "{{.Artist}}",
+  "value3": "{{.Title}}"
+}`,
+	},
+	{
+		ID:          "home_assistant",
+		Name:        "Home Assistant REST",
+		Description: "Calls a Home Assistant REST endpoint. Use a long-lived access token in the Authorization header.",
+		URLHint:     "https://homeassistant.local:8123/api/webhook/tinyice",
+		Events:      []string{"now_playing", "source_connect", "source_disconnect"},
+		Method:      "POST",
+		ContentType: "application/json",
+		Headers: map[string]string{
+			"Authorization": "Bearer <LONG_LIVED_TOKEN>",
+		},
+		Body: `{
+  "mount": "{{.Mount}}",
+  "artist": "{{.Artist}}",
+  "title": "{{.Title}}",
+  "event": "{{.Event}}"
+}`,
+	},
+	{
+		ID:          "apprise",
+		Name:        "Apprise notification",
+		Description: "Sends via Apprise API. URL encodes your notification targets (discord://, tgram://, etc.).",
+		URLHint:     "http://apprise:8000/notify",
+		Events:      []string{"now_playing", "source_connect", "source_disconnect", "security_lockout"},
+		Method:      "POST",
+		ContentType: "application/json",
+		Body: `{
+  "urls": "discord://<webhook-id>/<token>",
+  "title": "TinyIce — {{.Mount}}",
+  "body": "{{.Artist}} – {{.Title}}"
+}`,
+	},
+	{
 		ID:          "webhook_site",
 		Name:        "webhook.site (debug echo)",
 		Description: "Sends the full JSON payload to a webhook.site URL — useful for debugging your template before pointing it at a real receiver.",

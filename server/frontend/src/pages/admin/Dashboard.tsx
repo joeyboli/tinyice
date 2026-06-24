@@ -3,9 +3,10 @@ import { useEffect } from 'preact/hooks'
 import { createSSE } from '../../lib/sse'
 import { StatCard } from '../../components/StatCard'
 import { ListenerHistoryChart } from '../../components/ListenerHistoryChart'
+import { LiveListenersPanel, applyListenersSSE } from '../../components/LiveListenersPanel'
 import { TrafficTotalsCard } from '../../components/TrafficTotalsCard'
 import { GeoMapCard } from '../../components/GeoMapCard'
-import type { StatsEvent, StreamEvent } from '../../types'
+import type { StatsEvent, StreamEvent, LiveListener } from '../../types'
 
 // Reactive state
 const stats = signal<StatsEvent>({
@@ -58,6 +59,11 @@ function formatBandwidth(bytesPerSec: number): string {
   return `${(bytesPerSec / 1048576).toFixed(1)} MB/s`
 }
 
+function insightsHours(range: '1H' | '24H' | '7D' | '30D' | '90D' | '1Y' | 'ALL'): number {
+  const map = { '1H': 1, '24H': 24, '7D': 168, '30D': 720, '90D': 2160, '1Y': 8760, 'ALL': 24 * 365 * 5 }
+  return map[range]
+}
+
 export function Dashboard() {
   useEffect(() => {
     const sse = createSSE('/admin/events')
@@ -74,9 +80,14 @@ export function Dashboard() {
       ].sort((a, b) => a.mount.localeCompare(b.mount))
     })
 
+    const offListeners = sse.on('listeners', (data: { listeners?: LiveListener[] }) => {
+      applyListenersSSE(data)
+    })
+
     return () => {
       offStats()
       offStream()
+      offListeners()
       sse.close()
     }
   }, [])
@@ -138,9 +149,17 @@ export function Dashboard() {
         />
       </div>
 
+      <LiveListenersPanel mounts={streams.value.map((s) => s.mount)} />
+
       {/* Listener history — real data from listener_histories table */}
       <div class="mb-6">
-        <div class="flex justify-end gap-1 mb-2">
+        <div class="flex justify-end items-center gap-2 mb-2">
+          <a
+            href={`/admin/insights/export?hours=${insightsHours(timeRange.value)}`}
+            class="px-2 py-1 rounded font-mono text-[10px] tracking-wider text-text-tertiary hover:text-accent border border-border hover:border-accent/30 transition-colors"
+          >
+            EXPORT CSV
+          </a>
           {(['1H', '24H', '7D', '30D', '90D', '1Y', 'ALL'] as const).map((range) => (
             <button
               key={range}

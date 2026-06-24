@@ -70,7 +70,7 @@ func NewWebRTCManager(r *Relay) *WebRTCManager {
 	}
 }
 
-func (wm *WebRTCManager) HandleOffer(mount string, offer webrtc.SessionDescription) (*webrtc.SessionDescription, error) {
+func (wm *WebRTCManager) HandleOffer(mount string, offer webrtc.SessionDescription, onClose func()) (*webrtc.SessionDescription, error) {
 	stream, ok := wm.relay.GetStream(mount)
 	if !ok {
 		return nil, fmt.Errorf("stream not found")
@@ -131,6 +131,9 @@ func (wm *WebRTCManager) HandleOffer(mount string, offer webrtc.SessionDescripti
 			// Release UDP sockets / DTLS state. Same FD-creep
 			// concern as the WHEP path.
 			_ = peerConnection.Close()
+			if onClose != nil {
+				onClose()
+			}
 		}
 	})
 	go wm.streamToTrack(pumpCtx, peerConnection, audioTrack, stream)
@@ -387,7 +390,7 @@ func (wm *WebRTCManager) streamToTrack(ctx context.Context, pc *webrtc.PeerConne
 // audio and video tracks when the mount has them. The returned string
 // is the SDP answer only — the HTTP layer wraps it with the WHEP
 // headers (Location, 201 status).
-func (wm *WebRTCManager) HandleWHEPOffer(mount, sdpOffer string) (string, error) {
+func (wm *WebRTCManager) HandleWHEPOffer(mount, sdpOffer string, onClose func()) (string, error) {
 	stream, ok := wm.relay.GetStream(mount)
 	if !ok {
 		return "", fmt.Errorf("stream not found")
@@ -478,6 +481,9 @@ func (wm *WebRTCManager) HandleWHEPOffer(mount, sdpOffer string) (string, error)
 			// count creeps up over the course of many WHEP
 			// listener disconnects.
 			_ = pc.Close()
+			if onClose != nil {
+				onClose()
+			}
 		}
 	})
 

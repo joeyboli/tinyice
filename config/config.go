@@ -61,6 +61,41 @@ type SMTPConfig struct {
 	From     string `json:"from"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// NotifyEvents lists which server events trigger an email to admins.
+	// Empty means the default set: pending_user, source_connect,
+	// source_disconnect, security_lockout.
+	NotifyEvents []string `json:"notify_events,omitempty"`
+}
+
+// SMTPDefaultNotifyEvents is used when NotifyEvents is unset.
+var SMTPDefaultNotifyEvents = []string{
+	"pending_user",
+	"source_connect",
+	"source_disconnect",
+	"security_lockout",
+}
+
+func (s *SMTPConfig) WantsNotify(event string) bool {
+	if s == nil || !s.Enabled {
+		return false
+	}
+	events := s.NotifyEvents
+	if len(events) == 0 {
+		events = SMTPDefaultNotifyEvents
+	}
+	for _, e := range events {
+		if e == event {
+			return true
+		}
+	}
+	return false
+}
+
+// RedactedSecret is written into exported configs instead of real credentials.
+const RedactedSecret = "__REDACTED__"
+
+func isRedactedSecret(v string) bool {
+	return v == "" || v == RedactedSecret
 }
 
 type WebAuthnConfig struct {

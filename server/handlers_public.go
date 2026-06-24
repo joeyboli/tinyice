@@ -39,6 +39,7 @@ func (s *Server) handlePlayer(w http.ResponseWriter, r *http.Request) {
 	// mount URL and the HLS playlist.
 	_, hasVideo := s.Relay.GetStream(mount + "/video")
 	pageData["hasVideo"] = hasVideo
+	pageData["playerOptions"] = playerOptionsFromRequest(r)
 	s.shell.Render(w, "player", snap.Name+" — "+s.Config.PageTitle, pageData)
 }
 
@@ -81,6 +82,7 @@ func (s *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 	pageData["format"] = snap.ContentType
 	pageData["bitrate"] = snap.Bitrate
 	pageData["listeners"] = snap.ListenersCount
+	pageData["playerOptions"] = playerOptionsFromRequest(r)
 	s.shell.Render(w, "embed", s.Config.PageTitle, pageData)
 }
 

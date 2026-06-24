@@ -2441,7 +2441,33 @@ func (s *Server) apiGetSettings(w http.ResponseWriter, r *http.Request) {
 		"directory_listing": s.Config.DirectoryListing,
 		"directory_server":  s.Config.DirectoryServer,
 		"audit_enabled":     s.Config.AuditEnabled,
+		"smtp":              smtpSettingsResponse(s.Config.SMTP),
 	})
+}
+
+func smtpSettingsResponse(smtp *config.SMTPConfig) map[string]interface{} {
+	if smtp == nil {
+		return map[string]interface{}{
+			"enabled":       false,
+			"host":          "",
+			"port":          587,
+			"from":          "",
+			"username":      "",
+			"notify_events": config.SMTPDefaultNotifyEvents,
+		}
+	}
+	events := smtp.NotifyEvents
+	if len(events) == 0 {
+		events = config.SMTPDefaultNotifyEvents
+	}
+	return map[string]interface{}{
+		"enabled":       smtp.Enabled,
+		"host":          smtp.Host,
+		"port":          smtp.Port,
+		"from":          smtp.From,
+		"username":      smtp.Username,
+		"notify_events": events,
+	}
 }
 
 func (s *Server) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -2496,6 +2522,40 @@ func (s *Server) apiUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if v, ok := body["audit_enabled"]; ok {
 		if b, ok := v.(bool); ok {
 			s.Config.AuditEnabled = b
+		}
+	}
+	if v, ok := body["smtp"]; ok {
+		if m, ok := v.(map[string]interface{}); ok {
+			if s.Config.SMTP == nil {
+				s.Config.SMTP = &config.SMTPConfig{}
+			}
+			if b, ok := m["enabled"].(bool); ok {
+				s.Config.SMTP.Enabled = b
+			}
+			if v, ok := m["host"].(string); ok {
+				s.Config.SMTP.Host = v
+			}
+			if n, ok := m["port"].(float64); ok {
+				s.Config.SMTP.Port = int(n)
+			}
+			if v, ok := m["from"].(string); ok {
+				s.Config.SMTP.From = v
+			}
+			if v, ok := m["username"].(string); ok {
+				s.Config.SMTP.Username = v
+			}
+			if v, ok := m["password"].(string); ok && v != "" && v != config.RedactedSecret {
+				s.Config.SMTP.Password = v
+			}
+			if ev, ok := m["notify_events"].([]interface{}); ok {
+				events := make([]string, 0, len(ev))
+				for _, e := range ev {
+					if s, ok := e.(string); ok {
+						events = append(events, s)
+					}
+				}
+				s.Config.SMTP.NotifyEvents = events
+			}
 		}
 	}
 

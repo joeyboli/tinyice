@@ -190,6 +190,7 @@ func (s *Server) handleSource(w http.ResponseWriter, r *http.Request) {
 		"ua":    r.Header.Get("User-Agent"),
 		"name":  r.Header.Get("Ice-Name"),
 	})
+	go s.notifyAdminsSourceConnect(mount, r.RemoteAddr, r.Header.Get("User-Agent"), r.Header.Get("Ice-Name"))
 
 	s.updateSourceMetadata(stream, mount, r)
 
@@ -234,6 +235,7 @@ func (s *Server) handleSource(w http.ResponseWriter, r *http.Request) {
 	s.dispatchWebhook("source_disconnect", map[string]interface{}{
 		"mount": mount,
 	})
+	go s.notifyAdminsSourceDisconnect(mount)
 	s.Relay.RemoveStream(mount)
 }
 
@@ -479,6 +481,8 @@ func (s *Server) serveStreamData(w http.ResponseWriter, r *http.Request, stream 
 	}
 	offset, signal := stream.Subscribe(id, burst)
 	defer stream.Unsubscribe(id)
+	unregisterListener := s.registerHTTPListener(id, currentMount, r)
+	defer unregisterListener()
 
 	// Geo-track this listener for the dashboard map. The full
 	// (city, country, lat, lon) tuple is captured here (synchronous
@@ -644,6 +648,9 @@ func (s *Server) serveStreamData(w http.ResponseWriter, r *http.Request, stream 
 				_ = rc.SetWriteDeadline(time.Now().Add(writeTimeout))
 				if _, err := out.Write(buf[:n]); err != nil {
 					return false
+				}
+				if s.ListenerRegistry != nil {
+					s.ListenerRegistry.AddBytes(id, n)
 				}
 
 				if metaint > 0 {
